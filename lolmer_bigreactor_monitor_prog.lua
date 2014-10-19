@@ -4,7 +4,9 @@ Version: v0.3.14
 Programmer: Lolmer
 Great assistance by Mechaet
 Last update: 2014-09-30
-Pastebin: http://pastebin.com/fguScPBQ
+Pastebin: http://pastebin.com/Jjv7P7rd
+
+Small modifications by Zenchreal: use an array of energy cells instead of the internal energy buffer.
 
 Description:
 This program controls a Big Reactors nuclear reactor in Minecraft with a Computercraft computer, using Computercraft's own wired modem connected to the reactors computer control port.
@@ -237,6 +239,8 @@ local reactorNames = {} -- Empty array of reactor names
 local turbineList = {} -- Empty turbine array
 local turbineNames = {} -- Empty array of turbine names
 local turbineMonitorOffset = 0 -- Turbines are assigned monitors after reactors
+local energyCellList = {}
+local energyCellNames = {}
 
 
 term.clear()
@@ -940,6 +944,51 @@ local function findTurbines()
 end -- function findTurbines()
 
 
+-- Initialize all energy cells
+local function findEnergyCells()
+	printLog("Finding energy cells...")
+	energyCellList, energyCellNames = getDevices("cofh_thermalexpansion_energycell")
+	
+	printLog("Found "..#energyCellList.." energy cell(s) in findEnergyCells().")
+end
+
+
+-- Return total energy stored in connected energy cells by %
+local function getEnergyCellStoredPercent()
+	printLog("Called as getEnergyCellStoredPercent().")
+	
+	local totalStored = 0
+	local totalCapacity = 0
+	
+	for i = 1, #energyCellList do
+		cell = energyCellList[i]
+		stored = cell.getEnergyStored("")
+		capacity = cell.getMaxEnergyStored("")
+		totalStored = totalStored + stored
+		totalCapacity = totalCapacity + capacity
+	end
+	return round(totalStored * 100 / totalCapacity, 1)
+end
+
+
+-- Return total energy stored and capacity of connected energy cells 
+local function getEnergyCellStored()
+	printLog("Called as getEnergyCellStored().")
+	
+	local totalStored = 0
+	local totalCapacity = 0
+	
+	for i = 1, #energyCellList do
+		cell = energyCellList[i]
+		stored = cell.getEnergyStored("")
+		capacity = cell.getMaxEnergyStored("")
+		totalStored = totalStored + stored
+		totalCapacity = totalCapacity + capacity
+	end
+	return totalStored, totalCapacity
+end
+
+
 -- Return current energy buffer in a specific reactor by %
 local function getReactorStoredEnergyBufferPercent(reactor)
 	printLog("Called as getReactorStoredEnergyBufferPercent(reactor).")
@@ -951,8 +1000,12 @@ local function getReactorStoredEnergyBufferPercent(reactor)
 		printLog("getReactorStoredEnergyBufferPercent() did receive a valid Big Reactor Reactor.")
 	end
 
-	local energyBufferStorage = reactor.getEnergyStored()
-	return round(energyBufferStorage/100000, 1) -- (buffer/10000000 RF)*100%
+	if #energyCellList > 0 then
+		return getEnergyCellStoredPercent()
+	else
+		local energyBufferStorage = reactor.getEnergyStored()
+		return round(energyBufferStorage/100000, 1) -- (buffer/10000000 RF)*100%
+	end
 end -- function getReactorStoredEnergyBufferPercent(reactor)
 
 
@@ -1470,6 +1523,10 @@ local function reactorStatus(statusParams)
 end -- function reactorStatus(statusParams)
 
 
+-- It seems to take a long time to get these values, so we'll cache them here
+cellStored = 0
+cellCapacity = 0
+
 -- Display all found reactors' status to monitor 1
 -- This is only called if multiple reactors and/or a reactor plus at least one turbine are found
 local function displayAllStatus()
@@ -1543,6 +1600,10 @@ local function displayAllStatus()
 			printLog("turbine["..turbineIndex.."] in displayAllStatus() is NOT connected.")
 		end -- if turbine.getConnected() then
 	end -- for turbineIndex = 1, #turbineList do
+	
+	-- Get the amount stored in energy cells
+	totalEnergy = totalEnergy + cellStored
+	totalMaxEnergyStored = totalMaxEnergyStored + cellCapacity
 
 	print{"Reactors online/found: "..onlineReactor.."/"..#reactorList, 2, 3, monitorIndex}
 	print{"Turbines online/found: "..onlineTurbine.."/"..#turbineList, 2, 4, monitorIndex}
@@ -1574,6 +1635,7 @@ local function displayAllStatus()
 
 	printCentered("Fuel: "..round(totalReactorFuelConsumed,3).." mB/t", 11, monitorIndex)
 	print{"Buffer: "..math.ceil(totalEnergy,3).."/"..totalMaxEnergyStored.." RF", 2, 12, monitorIndex}
+	cellStored, cellCapacity = getEnergyCellStored()
 end -- function displayAllStatus()
 
 
@@ -1945,6 +2007,7 @@ function main()
 
 	-- Get our initial list of connected monitors and reactors
 	-- and initialize every cycle in case the connected devices change
+	findEnergyCells()
 	findMonitors()
 	findReactors()
 	findTurbines()
